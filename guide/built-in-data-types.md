@@ -216,11 +216,290 @@ lines
 ```
 
 ## 字节(Byte)和字节字符串(Byte String)
+
+字节是包含0到255之间的精确整数。byte?判断表示字节的数字。
+
+例如：
+
+```scheme
+> (byte? 0)
+#t
+> (byte? 256)
+#f
+```
+
+字节字符串类似于字符，但它的内容是字节序列而不是字符。字节字符串可用于处理纯ASCII而不是Unicode文本的应用程序中。一个字节的字符串打印形式特别支持这样的用途，因为一个字节的字符串打印的ASCII的字节字符串解码，但有一个#前缀。在字节字符串不可打印的ASCII字符或非ASCII字节用八进制表示法。
+
+例如：
+
+```scheme
+> #"Apple"
+#"Apple"
+
+> (bytes-ref #"Apple" 0)
+65
+
+> (make-bytes 3 65)
+#"AAA"
+
+> (define b (make-bytes 2 0))
+> b
+#"\0\0"
+
+> (bytes-set! b 0 1)
+> (bytes-set! b 1 255)
+> b
+#"\1\377"
+```
+
+字符串和字节字符串之间的显式转换，Racket直接支持三种编码：UTF-8，Latin-1，和当前的本地编码。字节到字节的通用转换器(特别是从UTF-8)弥合了支持任意字符串编码的差异分歧。
+
+例如：
+
+```scheme
+> (bytes->string/utf-8 #"\316\273")
+"λ"
+
+> (bytes->string/latin-1 #"\316\273")
+"Î»"
+
+> (parameterize ([current-locale "C"])  ; C locale supports ASCII,
+    (bytes->string/locale #"\316\273")) ; only, so...
+bytes->string/locale: byte string is not a valid encoding
+for the current locale
+  byte string: #"\316\273"
+  
+> (let ([cvt (bytes-open-converter "cp1253" ; Greek code page
+                                   "UTF-8")]
+        [dest (make-bytes 2)])
+    (bytes-convert cvt #"\353" 0 1 dest)
+    (bytes-close-converter cvt)
+    (bytes->string/utf-8 dest))
+    
+"λ"
+```
+
 ## 符号(Symbol)
+
+符号是一个原子值，它像前面的标识符那样以'前缀打印。一个表达式以'开始并以标识符继续表达式产生一个符号值。
+
+例如：
+
+```scheme
+> 'a
+'a
+> (symbol? 'a)
+#t
+```
+
+对于任何字符序列，一个相应的符号被保留；调用string->symbol程序，或读入一个语法标识，产生一个保留符号。由于互联网的符号可以方便地用eq?（或这样：eqv?或equal?）进行比较，所以他们作为一个易于使用的标签和枚举值提供。
+
+符号是区分大小写的。通过使用一个#ci前缀或其他方式，在读者保留默认情况下，读者可以将大小写字符序列生成一个符号。
+
+例如：
+```scheme
+> (eq? 'a 'a)
+#t
+> (eq? 'a (string->symbol "a"))
+#t
+> (eq? 'a 'b)
+#f
+> (eq? 'a 'A)
+#f
+> #ci'A
+'a
+```
+
+任何字符串（即，任何字符序列）都可以提供给string->symbol以获得相应的符号。读者输入任何字符都可以直接出现在一个标识符里，除了空白和以下特殊字符：
+
+> ( ) [ ] { } ” , “ ' ` ; # | \
+
+`gensym`和`string->uninterned-symbol`程序产生新的非保留(uninterned)符号，那不等同(比照`eq?`)于任何先前的保留或非保留符号。非保留符号是可用的新标签，不能与任何其它值混淆。
+
+例如：
+
+```scheme
+> (define s (gensym))
+> s
+'g42
+> (eq? s 'g42)
+#f
+> (eq? 'a (string->uninterned-symbol "a"))
+#f
+```
+
 ## 关键字(Keyword)
+
+一个关键字值是类似于一个符号，但它的印刷形式是用前缀#:。
+
+例如：
+
+```scheme
+> (string->keyword "apple")
+'#:apple
+
+> '#:apple
+'#:apple
+
+> (eq? '#:apple (string->keyword "apple"))
+#t
+```
+
 ## 配对(Pair)和列表(List)
+
+一个配对把两个任意值结合。`cons`程序构建配对，`car`和`cdr`程序分别提取配对的第一和第二个成员。`pair?`谓词确认配对。
+
+例如：
+
+```scheme
+> (cons 1 2)
+'(1 . 2)
+> (cons (cons 1 2) 3)
+'((1 . 2) . 3)
+> (car (cons 1 2))
+1
+> (cdr (cons 1 2))
+2
+> (pair? (cons 1 2))
+#t
+```
+
+列表是创建链表的配对的组合。更确切地说，一个列表要么是空列表`null`，要么是个配对(其第一个元素是列表元素，第二个元素是一个列表)。`list?`谓词识别列表。`null?`谓词识别空列表。
+
+例如：
+
+```scheme
+> null
+'()
+> (cons 0 (cons 1 (cons 2 null)))
+'(0 1 2)
+> (list? null)
+#t
+> (list? (cons 1 (cons 2 null)))
+#t
+> (list? (cons 1 2))
+#f
+```
+
+当一个列表或配对的一个元素不能写成引用值时，使用`list`或`cons`打印。例如，一个用`srcloc`构建的值不能使用`quote`来写，应该使用`srcloc`来写：
+
+```scheme
+> (srcloc "file.rkt" 1 0 1 (+ 4 4))
+(srcloc "file.rkt" 1 0 1 8)
+
+> (list 'here (srcloc "file.rkt" 1 0 1 8) 'there)
+(list 'here (srcloc "file.rkt" 1 0 1 8) 'there)
+
+> (cons 1 (srcloc "file.rkt" 1 0 1 8))
+(cons 1 (srcloc "file.rkt" 1 0 1 8))
+
+> (cons 1 (cons 2 (srcloc "file.rkt" 1 0 1 8)))
+(list* 1 2 (srcloc "file.rkt" 1 0 1 8))
+```
+
+如最后一个例子所示，list*是用来缩略一系列的不能使用list缩略的cons。
+
+列表中最重要的预定义程序是遍历列表元素的那些程序：
+
+```scheme
+> (map (lambda (i) (/ 1 i))
+       '(1 2 3))
+'(1 1/2 1/3)
+
+> (andmap (lambda (i) (i . < . 3))
+         '(1 2 3))
+#f
+
+> (ormap (lambda (i) (i . < . 3))
+         '(1 2 3))
+#t
+
+> (filter (lambda (i) (i . < . 3))
+          '(1 2 3))
+'(1 2)
+
+> (foldl (lambda (v i) (+ v i))
+         10
+         '(1 2 3))
+16
+
+> (for-each (lambda (i) (display i))
+            '(1 2 3))
+123
+
+> (member "Keys"
+          '("Florida" "Keys" "U.S.A."))
+'("Keys" "U.S.A.")
+
+> (assoc 'where
+         '((when "3:30") (where "Florida") (who "Mickey")))
+'(where "Florida")
+```
+
+配对是不可变的（与Lisp传统相反），pair?、list?仅识别不可变的配对和列表。mcons程序创建一个可变的配对，用set-mcar!和set-mcdr!，及mcar和mcdr进行操作。一个可变的配对用mcons打印，而write和display使用{和}打印可变配对：
+
+例如：
+
+```scheme
+> (define p (mcons 1 2))
+> p
+(mcons 1 2)
+
+> (pair? p)
+#f
+
+> (mpair? p)
+#t
+
+> (set-mcar! p 0)
+> p
+(mcons 0 2)
+
+> (write p)
+{0 . 2}
+```
+
 ## 向量(Vector)
+
+向量是任意值的固定长度数组。与列表不同，向量支持常量时间访问和元素更新。
+
+向量打印类似列表——作为其元素的括号序列——但向量要在'之后加前缀#，或如果某个元素不能用引号则使用vector表示。
+
+例如：
+
+```scheme
+> #("a" "b" "c")
+'#("a" "b" "c")
+
+> #(name (that tune))
+'#(name (that tune))
+
+> #4(baldwin bruce)
+'#(baldwin bruce bruce bruce)
+
+> (vector-ref #("a" "b" "c") 1)
+"b"
+
+> (vector-ref #(name (that tune)) 1)
+'(that tune)
+```
+
+像字符串一样，向量要么是可变的，要么是不可变的，直接作为表达式编写的向量是不可变的。
+
+向量可以通过`vector->list`和`list->vector`转换成列表，反之亦然。这种转换与列表中预定义的程序相结合特别有用。当分配额外的列表似乎太昂贵时，考虑使用像`for/fold`的循环形式，它像列表一样识别向量。
+
+例如：
+
+```scheme
+> (list->vector (map string-titlecase
+                     (vector->list #("three" "blind" "mice"))))
+
+'#("Three" "Blind" "Mice")
+```
+
 ## 哈希表(Hash Table)
+
 ## 格子(Box)
+
 ## 无效值(Void)和未定义值(Undefined)
 
