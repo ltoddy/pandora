@@ -499,7 +499,130 @@ for the current locale
 
 ## 哈希表(Hash Table)
 
+哈希表实现了从键到值的映射，其中键和值可以是任意的Racket值，而对表的访问和更新通常是常量时间操作。键的比较用`equal?`、`eqv?`或`eq?`，取决于哈希表的键创建方式为`make-hash`、`make-hasheqv`或是`make-hasheq`。
+
+例如：
+
+```scheme
+> (define ht (make-hash))
+> (hash-set! ht "apple" '(red round))
+> (hash-set! ht "banana" '(yellow long))
+> (hash-ref ht "apple")
+'(red round)
+
+> (hash-ref ht "coconut")
+hash-ref: no value found for key
+  key: "coconut"
+  
+> (hash-ref ht "coconut" "not there")
+"not there"
+```
+
+`hash`、`hasheqv`和`hasheq`函数创建不可变的哈希表的键和值的初始设置，其中每个值在键后提供一个参数。不可变的哈希表可通过hash-set扩展，在恒定的时间里产生一个新的不可变的哈希表。
+
+例如：
+
+```scheme
+> (define ht (hash "apple" 'red "banana" 'yellow))
+> (hash-ref ht "apple")
+'red
+
+> (define ht2 (hash-set ht "coconut" 'brown))
+> (hash-ref ht "coconut")
+hash-ref: no value found for key
+  key: "coconut"
+> (hash-ref ht2 "coconut")
+'brown
+```
+
+一个原意的不可变哈希表可以写为一个表达式，使用`#hash`(以`equal?`为基础的表)、`#hasheqv`(以`eqv?`为基础的表)或`#hasheq`(以`eq?`为基础的表)。一个括号序列必须紧跟`#hash`、`#hasheq`或`#hasheqv`，其中每个元素是一个点的键–值对。这个`#hash`等其它表都暗含`quote`它们的键和值的子表。
+
+例如：
+
+```scheme
+> #hash(("apple" . red)
+        ("banana" . yellow))
+'#hash(("apple" . red) ("banana" . yellow))
+
+> (hash 1 (srcloc "file.rkt" 1 0 1 (+ 4 4)))
+(hash 1 (srcloc "file.rkt" 1 0 1 8))
+```
+
+可变哈希表可以选择性地弱方式(weakly)保留其键，因此只要保留在其它地方的键，每个映射都被保留。
+
+例如：
+
+```scheme
+> (define ht (make-weak-hasheq))
+> (hash-set! ht (gensym) "can you see me?")
+> (collect-garbage)
+> (hash-count ht)
+0
+```
+
+请注意，即使是弱哈希表，只要对应的键是可访问的，它的值也很强健。当一个值指回到它的键，就造成了一个两难的依赖，以致这个映射永久保持。要打破这个循环，映射一个键到一个暂存值(ephemeron)，配对它的键和值(除这个隐配对的哈希表之外)。
+
+例如：
+
+```scheme
+> (define ht (make-weak-hasheq))
+> (let ([g (gensym)])
+    (hash-set! ht g (list g)))
+> (collect-garbage)
+> (hash-count ht)
+1
+
+> (define ht (make-weak-hasheq))
+> (let ([g (gensym)])
+    (hash-set! ht g (make-ephemeron g (list g))))
+> (collect-garbage)
+> (hash-count ht)
+0
+```
+
 ## 格子(Box)
+
+一个格子是一个单元素矢量。它可以打印成一个引用#&后边跟随这个格子值的打印表。一个#&表也可以用来作为一种表达，但由于作为结果的格子是常量，它实际上没有使用。
+
+例如：
+
+```scheme
+> (define b (box "apple"))
+> b
+'#&"apple"
+
+> (unbox b)
+"apple"
+
+> (set-box! b '(banana boat))
+> b
+'#&(banana boat)
+```
 
 ## 无效值(Void)和未定义值(Undefined)
 
+某些过程或表达式形式不需要结果值。例如，`display`程序仅调用输出的副作用。在这样的情况下，得到的值通常是一个特殊的常量，打印为`#<void>`。当一个表达式的结果是简单的`#<void>`，REPL不打印任何东西。
+
+
+void程序接受任意数量的参数并返回`#<void>`。(即，void标识符绑定到一个返回`#<void>`的程序，而不是直接绑定到`#<void>`。)
+
+例如：
+
+```scheme
+> (void)
+> (void 1 2 3)
+> (list (void))
+'(#<void>)
+```
+
+undefined常量，它打印为`#<undefined>`，有时是作为一个参考的结果，其值是不可用的。在Racket以前的版本(6.1以前的版本)，过早参照一个局部绑定会产生`#<undefined>`；而不是像太早的参照现在会引发一个异常。
+
+```scheme
+(define (fails)
+  (define x x)
+  x)
+
+> (fails)
+x: undefined;
+ cannot use before initialization
+```
